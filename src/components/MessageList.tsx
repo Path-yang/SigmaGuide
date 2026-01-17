@@ -4,6 +4,24 @@ import { useTaskStore } from '../stores/taskStore'
 
 function ScreenshotPreview({ src }: { src: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && fullscreen) {
+        setFullscreen(false)
+      }
+    }
+    if (fullscreen) {
+      document.addEventListener('keydown', handleEscape)
+      document.body.style.overflow = 'hidden'
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = ''
+    }
+  }, [fullscreen])
 
   return (
     <div className="mt-2">
@@ -18,7 +36,42 @@ function ScreenshotPreview({ src }: { src: string }) {
       </button>
       {expanded && (
         <div className="mt-2 rounded-lg overflow-hidden border border-sigma-700/50 animate-fade-in">
-          <img src={src} alt="Screen capture" className="w-full h-auto" />
+          <img 
+            src={src} 
+            alt="Screen capture" 
+            className="w-full h-auto cursor-zoom-in hover:opacity-90 transition-opacity" 
+            onClick={() => setFullscreen(true)}
+            title="Click to enlarge"
+          />
+        </div>
+      )}
+      
+      {/* Fullscreen Modal */}
+      {fullscreen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center animate-fade-in"
+          onClick={() => setFullscreen(false)}
+        >
+          <div className="relative max-w-[95vw] max-h-[95vh]">
+            <img 
+              src={src} 
+              alt="Screen capture enlarged" 
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setFullscreen(false)}
+              className="absolute top-4 right-4 p-2 bg-sigma-800/80 hover:bg-sigma-700 rounded-full text-white transition-colors shadow-lg"
+              title="Close"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-sm font-mono bg-sigma-800/80 px-4 py-2 rounded-full">
+              Click anywhere or press X to close
+            </div>
+          </div>
         </div>
       )}
     </div>
