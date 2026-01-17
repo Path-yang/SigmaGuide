@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "web": "vite --config vite.config.web.ts",
     "web:build": "vite build --config vite.config.web.ts",
-    "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "electron:dev": "vite",
     "electron:build": "vite build && electron-builder",
     "preview": "vite preview"
   },
