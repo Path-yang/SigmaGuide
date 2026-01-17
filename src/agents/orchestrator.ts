@@ -17,8 +17,8 @@ class Orchestrator {
   private monitoringInterval: ReturnType<typeof setInterval> | null = null
   private lastCheckTime = 0
   private lastMessageForStep: Map<number, string> = new Map()
-  private readonly CHECK_INTERVAL = 3000 // Check every 3 seconds
-  private readonly DEBOUNCE_DELAY = 800 // Wait 800ms after screen changes before processing
+  private readonly CHECK_INTERVAL = 1500 // Check every 1.5 seconds
+  private readonly DEBOUNCE_DELAY = 400 // Wait 400ms after screen changes before processing
   private isProcessing = false // Prevent concurrent processing
 
   /**

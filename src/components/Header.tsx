@@ -80,12 +80,12 @@ export function Header() {
         <div className="mt-3 relative">
           <div className="flex items-center justify-between text-[10px] text-sigma-500 mb-1.5 font-mono">
             <span>Step {currentTask.currentStepIndex + 1} of {currentTask.steps.length}</span>
-            <span>{Math.round(((currentTask.currentStepIndex) / currentTask.steps.length) * 100)}%</span>
+            <span>{Math.round(((currentTask.currentStepIndex + 1) / currentTask.steps.length) * 100)}%</span>
           </div>
           <div className="h-1 bg-sigma-700 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-sigma-accent to-sigma-glow rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${((currentTask.currentStepIndex) / currentTask.steps.length) * 100}%` }}
+              className="h-full bg-gradient-to-r from-sigma-accent to-sigma-glow rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${((currentTask.currentStepIndex + 1) / currentTask.steps.length) * 100}%` }}
             />
           </div>
         </div>
