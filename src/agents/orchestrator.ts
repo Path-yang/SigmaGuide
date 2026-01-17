@@ -13,7 +13,32 @@ interface IntentResult {
 
 class Orchestrator {
   private lastScreenshot: string | null = null
+  private lastScreenshotHash: string | null = null
   private monitoringInterval: ReturnType<typeof setInterval> | null = null
+  private lastCheckTime = 0
+  private lastMessageForStep: Map<number, string> = new Map()
+  private readonly CHECK_INTERVAL = 3000 // Check every 3 seconds
+  private readonly DEBOUNCE_DELAY = 800 // Wait 800ms after screen changes before processing
+  private isProcessing = false // Prevent concurrent processing
+
+  /**
+   * Generate a simple hash from screenshot string for change detection
+   */
+  private hashScreenshot(screenshot: string): string {
+    // Simple hash: use first 100 chars and last 100 chars for quick comparison
+    // More efficient than full string comparison
+    const start = screenshot.substring(0, 100)
+    const end = screenshot.substring(Math.max(0, screenshot.length - 100))
+    const combined = start + end
+    // Use a simple hash code
+    let hash = 0
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // Convert to 32-bit integer
+    }
+    return hash.toString()
+  }
 
   /**
    * Capture current screen
@@ -24,7 +49,8 @@ class Orchestrator {
       
       // Handle error responses
       if (result && typeof result === 'object' && 'error' in result) {
-        console.log('Screen capture error:', result.error)
+        const errorResult = result as { error: string }
+        console.log('Screen capture error:', errorResult.error)
         return null
       }
       
@@ -241,11 +267,12 @@ Give the user clear guidance for this step. Be specific about what they should c
   startStepMonitoring() {
     // Clear any existing monitoring
     this.stopStepMonitoring()
+    this.lastMessageForStep.clear() // Reset message tracking
 
-    // Check every 2 seconds
+    // Check at intervals
     this.monitoringInterval = setInterval(async () => {
       await this.checkStepCompletion()
-    }, 2000)
+    }, this.CHECK_INTERVAL)
   }
 
   /**
@@ -259,9 +286,49 @@ Give the user clear guidance for this step. Be specific about what they should c
   }
 
   /**
+   * Generate adaptive guidance when user takes a different path
+   */
+  private async generateAdaptiveGuidance(
+    task: Task,
+    currentScreenshot: string,
+    expectedInstruction: string,
+    verificationObservation: string
+  ): Promise<string> {
+    const step = task.steps[task.currentStepIndex]
+    
+    const prompt = `${PROMPTS.guidance}
+
+Context:
+- Application: ${task.appContext?.app || 'Unknown'}
+- User's Goal: ${task.goal}
+- Current Step: ${task.currentStepIndex + 1} of ${task.steps.length}
+- Expected Action: ${expectedInstruction}
+- What Actually Changed: ${verificationObservation}
+
+The user's screen has changed, but they may have taken a different path than expected. Analyze the current screen state and provide guidance that adapts to what they actually did. 
+
+If they're on the right track but just did it differently, encourage them and guide to the next step.
+If they've gone off track, gently redirect them back to the correct path.
+If they've completed the step in a different way, acknowledge it and move forward.
+
+Give clear, adaptive guidance based on the actual current screen state.`
+
+    const response = await analyzeScreenshot(currentScreenshot, prompt)
+    if (!response.error && response.text) {
+      return response.text
+    }
+    
+    // Fallback
+    return `I notice your screen has changed. ${verificationObservation}\n\n${step.instruction}\n\nIf you're ready, let's continue to the next step!`
+  }
+
+  /**
    * Check if user completed the current step
    */
   private async checkStepCompletion() {
+    // Prevent concurrent processing
+    if (this.isProcessing) return
+
     const taskStore = useTaskStore.getState()
     const chatStore = useChatStore.getState()
     const task = taskStore.currentTask
@@ -271,58 +338,168 @@ Give the user clear guidance for this step. Be specific about what they should c
       return
     }
 
+    // Debounce - don't check too frequently
+    const now = Date.now()
+    if (now - this.lastCheckTime < this.CHECK_INTERVAL) {
+      return
+    }
+    this.lastCheckTime = now
+
     const currentStep = task.steps[task.currentStepIndex]
     if (!currentStep || currentStep.completed) return
 
     // Capture new screenshot
     const newScreenshot = await this.captureScreen()
-    if (!newScreenshot || !this.lastScreenshot) return
+    if (!newScreenshot || !this.lastScreenshot) {
+      // Store initial screenshot
+      if (newScreenshot && !this.lastScreenshot) {
+        this.lastScreenshot = newScreenshot
+        this.lastScreenshotHash = this.hashScreenshot(newScreenshot)
+      }
+      return
+    }
 
-    // Skip if screenshot hasn't changed much (basic check)
-    if (newScreenshot === this.lastScreenshot) return
+    // Check if screenshot has actually changed using hash
+    const newScreenshotHash = this.hashScreenshot(newScreenshot)
+    if (newScreenshotHash === this.lastScreenshotHash) {
+      // No change detected, skip processing
+      return
+    }
 
-    // Verify step completion
-    const verification = await verifyStepCompletion(
-      this.lastScreenshot,
-      newScreenshot,
-      currentStep.instruction
-    )
+    // Wait a bit for UI to settle after change
+    await new Promise(resolve => setTimeout(resolve, this.DEBOUNCE_DELAY))
 
-    if (verification && verification.completed && verification.confidence > 0.7) {
-      // Mark step as complete
-      taskStore.updateStep(task.currentStepIndex, true)
-      
-      // Check if task is complete
-      if (task.currentStepIndex >= task.steps.length - 1) {
-        taskStore.completeTask()
-        this.stopStepMonitoring()
+    // Re-capture after delay to ensure stable state
+    const stableScreenshot = await this.captureScreen()
+    if (!stableScreenshot) return
+
+    // Check again if still changed
+    const stableHash = this.hashScreenshot(stableScreenshot)
+    if (stableHash === this.lastScreenshotHash) {
+      // False alarm, screen settled back
+      return
+    }
+
+    this.isProcessing = true
+
+    try {
+      // Verify step completion with before/after comparison
+      const verification = await verifyStepCompletion(
+        this.lastScreenshot,
+        stableScreenshot,
+        currentStep.instruction
+      )
+
+      if (!verification) {
+        // Verification failed, but screen changed - adapt guidance
+        const stepKey = `${task.currentStepIndex}-${stableHash}`
+        const lastMessage = this.lastMessageForStep.get(task.currentStepIndex)
         
-        chatStore.addMessage({
-          role: 'assistant',
-          content: `🎉 **Excellent!** You've completed all the steps. "${task.goal}" is done!`
-        })
-      } else {
-        // Advance to next step
-        taskStore.advanceStep()
-        
-        // Generate guidance for next step
-        const nextTask = useTaskStore.getState().currentTask
-        if (nextTask) {
-          const guidance = await this.generateStepGuidance(
-            nextTask, 
-            nextTask.currentStepIndex, 
-            newScreenshot
+        // Only send new message if we haven't sent one for this change
+        if (!lastMessage || lastMessage !== stepKey) {
+          const adaptiveGuidance = await this.generateAdaptiveGuidance(
+            task,
+            stableScreenshot,
+            currentStep.instruction,
+            'The screen changed, but I could not verify if the step was completed correctly.'
           )
           
           chatStore.addMessage({
             role: 'assistant',
-            content: `✓ Step ${task.currentStepIndex + 1} done!\n\n${guidance}`,
-            screenshot: newScreenshot
+            content: adaptiveGuidance,
+            screenshot: stableScreenshot
           })
+          
+          this.lastMessageForStep.set(task.currentStepIndex, stepKey)
         }
+
+        // Update screenshot for next check
+        this.lastScreenshot = stableScreenshot
+        this.lastScreenshotHash = stableHash
+        this.isProcessing = false
+        return
       }
 
-      this.lastScreenshot = newScreenshot
+      // Step completed successfully
+      if (verification.completed && verification.confidence > 0.7) {
+        // Mark step as complete
+        taskStore.updateStep(task.currentStepIndex, true)
+        
+        // Check if task is complete
+        if (task.currentStepIndex >= task.steps.length - 1) {
+          taskStore.completeTask()
+          this.stopStepMonitoring()
+          
+          const completionKey = `complete-${stableHash}`
+          const lastCompletionMessage = this.lastMessageForStep.get(-1)
+          
+          if (lastCompletionMessage !== completionKey) {
+            chatStore.addMessage({
+              role: 'assistant',
+              content: `🎉 **Excellent!** You've completed all the steps. "${task.goal}" is done!`
+            })
+            this.lastMessageForStep.set(-1, completionKey)
+          }
+        } else {
+          // Advance to next step
+          taskStore.advanceStep()
+          
+          // Generate guidance for next step
+          const nextTask = useTaskStore.getState().currentTask
+          if (nextTask) {
+            const stepKey = `${nextTask.currentStepIndex}-${stableHash}`
+            const lastMessage = this.lastMessageForStep.get(nextTask.currentStepIndex)
+            
+            // Only send if we haven't already sent guidance for this step
+            if (!lastMessage || lastMessage !== stepKey) {
+              const guidance = await this.generateStepGuidance(
+                nextTask, 
+                nextTask.currentStepIndex, 
+                stableScreenshot
+              )
+              
+              chatStore.addMessage({
+                role: 'assistant',
+                content: `✓ Step ${task.currentStepIndex + 1} done!\n\n${guidance}`,
+                screenshot: stableScreenshot
+              })
+              
+              this.lastMessageForStep.set(nextTask.currentStepIndex, stepKey)
+            }
+          }
+        }
+
+        this.lastScreenshot = stableScreenshot
+        this.lastScreenshotHash = stableHash
+      } else {
+        // Screen changed but step not completed - provide adaptive guidance
+        const stepKey = `${task.currentStepIndex}-${stableHash}-incomplete`
+        const lastMessage = this.lastMessageForStep.get(task.currentStepIndex)
+        
+        if (!lastMessage || lastMessage !== stepKey) {
+          const adaptiveGuidance = await this.generateAdaptiveGuidance(
+            task,
+            stableScreenshot,
+            currentStep.instruction,
+            verification.observation || 'The screen changed but the step may not be completed correctly.'
+          )
+          
+          chatStore.addMessage({
+            role: 'assistant',
+            content: adaptiveGuidance,
+            screenshot: stableScreenshot
+          })
+          
+          this.lastMessageForStep.set(task.currentStepIndex, stepKey)
+        }
+
+        this.lastScreenshot = stableScreenshot
+        this.lastScreenshotHash = stableHash
+      }
+    } catch (error) {
+      console.error('Error in checkStepCompletion:', error)
+    } finally {
+      this.isProcessing = false
     }
   }
 
@@ -360,6 +537,9 @@ Give the user clear guidance for this step. Be specific about what they should c
   reset() {
     this.stopStepMonitoring()
     this.lastScreenshot = null
+    this.lastScreenshotHash = null
+    this.lastMessageForStep.clear()
+    this.isProcessing = false
     useTaskStore.getState().resetTask()
     useChatStore.getState().clearMessages()
   }

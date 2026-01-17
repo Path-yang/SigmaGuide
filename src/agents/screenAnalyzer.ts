@@ -1,4 +1,4 @@
-import { analyzeScreenshot, parseJsonResponse } from '../lib/openai'
+import { analyzeScreenshot, analyzeScreenshotWithMultipleImages, parseJsonResponse } from '../lib/openai'
 import { PROMPTS } from '../lib/prompts'
 
 export interface ScreenAnalysis {
@@ -35,27 +35,20 @@ export interface StepVerification {
 }
 
 export async function verifyStepCompletion(
-  _beforeScreenshot: string,
+  beforeScreenshot: string,
   afterScreenshot: string,
   instruction: string
 ): Promise<StepVerification | null> {
-  const prompt = `You are a step verification AI. The user was instructed to: "${instruction}"
-
-Compare the two screenshots (before and after) and determine if they completed the action.
-
-Return JSON:
-{
-  "completed": true or false,
-  "confidence": 0.0 to 1.0,
-  "observation": "What changed",
-  "nextRecommendation": "If not completed, what might help"
-}
-
-Be generous - if the goal seems achieved even if done differently, mark as complete.`
-
-  // For verification, we need to send both images
-  // Gemini 2.0 Flash supports multi-image input
-  const response = await analyzeScreenshot(afterScreenshot, prompt)
+  // Use the formatted prompt from prompts.ts with the instruction
+  const prompt = PROMPTS.stepVerification.replace('{instruction}', instruction)
+  
+  // Send BOTH screenshots for comparison
+  // GPT-4o supports multiple images in a single message
+  const response = await analyzeScreenshotWithMultipleImages(
+    [beforeScreenshot, afterScreenshot],
+    prompt,
+    ['BEFORE screenshot - state before the action', 'AFTER screenshot - current state']
+  )
   
   if (response.error) {
     console.error('Step verification failed:', response.error)

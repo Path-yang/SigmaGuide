@@ -44,13 +44,70 @@ export async function analyzeScreenshot(
           ]
         }
       ],
-      max_tokens: 4096
+      max_tokens: 4096,
+      temperature: 0.2 // Lower temperature for more consistent outputs
     })
 
     const text = response.choices[0]?.message?.content || ''
     return { text }
   } catch (error) {
     console.error('OpenAI Vision error:', error)
+    return { 
+      text: '', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    }
+  }
+}
+
+/**
+ * Analyze multiple screenshots with a text prompt using GPT-4 Vision
+ * This is essential for comparing before/after screenshots for step verification
+ */
+export async function analyzeScreenshotWithMultipleImages(
+  base64Images: string[], 
+  prompt: string,
+  imageLabels?: string[]
+): Promise<AIResponse> {
+  try {
+    const imageContent = base64Images.map((img) => ({
+      type: 'image_url' as const,
+      image_url: {
+        url: img,
+        detail: 'high' as const
+      }
+    }))
+
+    // Add labels to prompt if provided
+    let enhancedPrompt = prompt
+    if (imageLabels && imageLabels.length === base64Images.length) {
+      const labelText = imageLabels
+        .map((label, idx) => `Image ${idx + 1}: ${label}`)
+        .join('\n')
+      enhancedPrompt = `${labelText}\n\n${prompt}`
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            ...imageContent,
+            {
+              type: 'text' as const,
+              text: enhancedPrompt
+            }
+          ]
+        }
+      ],
+      max_tokens: 4096,
+      temperature: 0.1 // Lower temperature for more deterministic JSON output
+    })
+
+    const text = response.choices[0]?.message?.content || ''
+    return { text }
+  } catch (error) {
+    console.error('OpenAI Vision multi-image error:', error)
     return { 
       text: '', 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -71,7 +128,8 @@ export async function generateText(prompt: string): Promise<AIResponse> {
           content: prompt
         }
       ],
-      max_tokens: 4096
+      max_tokens: 4096,
+      temperature: 0.3 // Slightly higher for natural language
     })
 
     const text = response.choices[0]?.message?.content || ''
