@@ -1,8 +1,10 @@
 import { useChatStore } from '../stores/chatStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { reactiveOrchestrator } from '../agents/reactiveOrchestrator'
 
 export function Header() {
   const { isLoading } = useChatStore()
+  const { windowMode, guidanceMode, setWindowMode, setGuidanceMode } = useSettingsStore()
   const currentGoal = reactiveOrchestrator.getCurrentGoal()
 
   const handleMinimize = () => {
@@ -46,6 +48,51 @@ export function Header() {
 
         {/* Window controls */}
         <div className="flex items-center gap-1 -webkit-app-region-no-drag" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* Window Mode Toggle */}
+          <button
+            onClick={() => setWindowMode(windowMode === 'sidebar' ? 'overlay' : 'sidebar')}
+            className={`p-2 rounded-lg transition-all duration-200 ${
+              windowMode === 'overlay' 
+                ? 'text-sigma-accent bg-sigma-accent/10' 
+                : 'text-sigma-500 hover:text-white hover:bg-sigma-700/50'
+            }`}
+            title={windowMode === 'sidebar' ? 'Switch to Overlay Mode' : 'Switch to Sidebar Mode'}
+          >
+            {windowMode === 'sidebar' ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
+          </button>
+
+          {/* Guidance Mode Toggle */}
+          <button
+            onClick={() => setGuidanceMode(guidanceMode === 'steps' ? 'single' : 'steps')}
+            className={`p-2 rounded-lg transition-all duration-200 ${
+              guidanceMode === 'single' 
+                ? 'text-sigma-accent bg-sigma-accent/10' 
+                : 'text-sigma-500 hover:text-white hover:bg-sigma-700/50'
+            }`}
+            title={guidanceMode === 'steps' ? 'Switch to Quick Answer Mode' : 'Switch to Step-by-Step Mode'}
+          >
+            {guidanceMode === 'steps' ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-sigma-700/50 mx-1" />
+
           {currentGoal && (
             <button
               onClick={handleReset}

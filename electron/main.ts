@@ -4,6 +4,7 @@ const path = require('path')
 const SIDEBAR_WIDTH = 420
 
 let mainWindow: any = null
+let currentWindowMode: 'sidebar' | 'overlay' = 'sidebar'
 
 // Check screen recording permission on macOS
 function checkScreenCapturePermission(): boolean {
@@ -59,6 +60,13 @@ function toggleWindow() {
       mainWindow.hide()
     } else {
       mainWindow.show()
+      
+      // In overlay mode, ensure it stays on top and focuses properly
+      if (currentWindowMode === 'overlay') {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver')
+        mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      }
+      
       mainWindow.focus()
     }
   }
@@ -127,6 +135,50 @@ ipcMain.handle('close-window', () => {
 
 ipcMain.handle('toggle-window', () => {
   toggleWindow()
+})
+
+// Set window mode (sidebar vs overlay)
+ipcMain.handle('set-window-mode', (_event: any, mode: 'sidebar' | 'overlay') => {
+  if (mode === currentWindowMode) return
+  currentWindowMode = mode
+  
+  if (!mainWindow) return
+  
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
+  
+  if (mode === 'overlay') {
+    // Overlay mode: floating window that stays on top of EVERYTHING (including fullscreen apps)
+    mainWindow.setSize(600, 500)
+    mainWindow.setPosition(
+      Math.floor((screenWidth - 600) / 2),
+      Math.floor((screenHeight - 500) / 2)
+    )
+    mainWindow.setResizable(true)
+    
+    // Use 'screen-saver' level to float above fullscreen apps on macOS
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    
+    // Show on all workspaces/desktops (macOS)
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    
+    // Make it focusable but not steal focus from other apps
+    mainWindow.setSkipTaskbar(true)
+    
+    console.log('Window mode: overlay (floating above all apps)')
+  } else {
+    // Sidebar mode: right side, full height
+    mainWindow.setSize(420, screenHeight)
+    mainWindow.setPosition(screenWidth - 420, 0)
+    mainWindow.setResizable(false)
+    mainWindow.setAlwaysOnTop(true, 'floating')
+    mainWindow.setVisibleOnAllWorkspaces(false)
+    mainWindow.setSkipTaskbar(false)
+    console.log('Window mode: sidebar')
+  }
+  
+  // Notify renderer of mode change
+  mainWindow.webContents.send('window-mode-changed', mode)
 })
 
 // Trigger guidance check (send to renderer)

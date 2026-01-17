@@ -1,5 +1,6 @@
 import { useChatStore } from '../stores/chatStore'
-import { analyzeScreenWithClaude, classifyIntentClaude } from '../lib/claude'
+import { useSettingsStore } from '../stores/settingsStore'
+import { analyzeScreenWithClaude, classifyIntentClaude, quickAnswerClaude } from '../lib/claude'
 
 /**
  * Reactive Orchestrator - A simpler, more reliable approach
@@ -164,6 +165,7 @@ class ReactiveOrchestrator {
    */
   async processUserMessage(userMessage: string): Promise<string> {
     const chatStore = useChatStore.getState()
+    const { guidanceMode } = useSettingsStore.getState()
     chatStore.setLoading(true)
 
     try {
@@ -175,15 +177,27 @@ class ReactiveOrchestrator {
         return this.handleConversation(userMessage)
       }
 
-      // It's a task - capture screen and start guiding
-      this.currentGoal = task
-      this.lastGuidance = null
-      
+      // Capture screen
       const screenshot = await this.captureScreen()
       
       if (!screenshot) {
         return "I can't see your screen right now. Please make sure screen capture is enabled and try again."
       }
+
+      // SINGLE MODE: Just answer the question, no task tracking
+      if (guidanceMode === 'single') {
+        const response = await quickAnswerClaude(screenshot, task)
+        
+        if (response.error) {
+          return `I encountered an error: ${response.error}. Please try again.`
+        }
+        
+        return response.text
+      }
+
+      // STEPS MODE: Full task tracking with progress
+      this.currentGoal = task
+      this.lastGuidance = null
 
       // Get initial guidance
       const response = await analyzeScreenWithClaude(screenshot, this.currentGoal)

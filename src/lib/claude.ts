@@ -149,3 +149,53 @@ Reply JSON: {"isTask": true/false, "task": "task description if true"}`
     return { isTask: true, task: userMessage }
   }
 }
+
+/**
+ * Quick single answer - just answer the question directly without task tracking
+ * Used in "single" guidance mode
+ */
+export async function quickAnswerClaude(
+  base64Image: string,
+  question: string
+): Promise<ClaudeResponse> {
+  try {
+    const imageData = base64Image.replace(/^data:image\/\w+;base64,/, '')
+    
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: imageData
+              }
+            },
+            {
+              type: 'text',
+              text: `Looking at this screen, answer this question concisely: "${question}"
+              
+Be direct and helpful. If the question asks how to do something, give clear instructions.`
+            }
+          ]
+        }
+      ]
+    })
+
+    const textContent = response.content.find(c => c.type === 'text')
+    const text = textContent && 'text' in textContent ? textContent.text : ''
+    
+    return { text }
+  } catch (error) {
+    console.error('Claude quick answer error:', error)
+    return {
+      text: '',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
