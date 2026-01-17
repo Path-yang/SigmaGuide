@@ -1,5 +1,7 @@
-const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen, systemPreferences } = require('electron')
+const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen, systemPreferences, nativeImage } = require('electron')
 const path = require('path')
+
+const SIDEBAR_WIDTH = 420
 
 let mainWindow: any = null
 
@@ -62,19 +64,51 @@ function toggleWindow() {
   }
 }
 
-// Screen capture handler - simplified, just try to capture
+// Screen capture handler - captures screen excluding the sidebar
 ipcMain.handle('capture-screen', async () => {
   try {
+    // Get actual screen dimensions
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.size
+    const scaleFactor = primaryDisplay.scaleFactor || 1
+    
+    // Capture at actual screen resolution
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
+      thumbnailSize: { 
+        width: Math.floor(screenWidth * scaleFactor), 
+        height: Math.floor(screenHeight * scaleFactor) 
+      }
     })
 
     console.log('Found screen sources:', sources.length)
 
     if (sources.length > 0) {
-      const base64 = sources[0].thumbnail.toDataURL()
-      console.log('Screenshot captured, size:', base64.length)
+      const fullScreenshot = sources[0].thumbnail
+      const size = fullScreenshot.getSize()
+      
+      // Calculate crop area: exclude the sidebar on the right
+      // Account for scale factor in the crop dimensions
+      const sidebarPixels = Math.floor(SIDEBAR_WIDTH * scaleFactor)
+      const cropWidth = size.width - sidebarPixels
+      
+      if (cropWidth > 0) {
+        // Crop the screenshot to exclude sidebar
+        const croppedScreenshot = fullScreenshot.crop({
+          x: 0,
+          y: 0,
+          width: cropWidth,
+          height: size.height
+        })
+        
+        const base64 = croppedScreenshot.toDataURL()
+        console.log('Screenshot captured (excluding sidebar), size:', base64.length)
+        return base64
+      }
+      
+      // Fallback to full screenshot if crop fails
+      const base64 = fullScreenshot.toDataURL()
+      console.log('Screenshot captured (full), size:', base64.length)
       return base64
     }
     return null

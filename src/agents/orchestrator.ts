@@ -2,8 +2,14 @@ import { useChatStore } from '../stores/chatStore'
 import { useTaskStore, Task } from '../stores/taskStore'
 import { analyzeScreen, verifyStepCompletion } from './screenAnalyzer'
 import { decomposeTask } from './taskDecomposer'
-import { analyzeScreenshot, generateText } from '../lib/openai'
+import { analyzeScreenshot, generateText, parseJsonResponse } from '../lib/openai'
 import { PROMPTS } from '../lib/prompts'
+
+interface IntentResult {
+  intent: 'task' | 'greeting' | 'question' | 'followup' | 'unclear'
+  confidence: number
+  taskDescription: string | null
+}
 
 class Orchestrator {
   private lastScreenshot: string | null = null
@@ -31,6 +37,70 @@ class Orchestrator {
   }
 
   /**
+   * Classify the user's intent
+   */
+  private async classifyIntent(userMessage: string): Promise<IntentResult> {
+    const prompt = `${PROMPTS.intentClassifier}\n\nUser message: "${userMessage}"`
+    
+    const response = await generateText(prompt)
+    
+    if (response.error) {
+      // Default to task if we can't classify
+      return { intent: 'task', confidence: 0.5, taskDescription: userMessage }
+    }
+    
+    const result = parseJsonResponse<IntentResult>(response.text)
+    
+    if (!result) {
+      return { intent: 'task', confidence: 0.5, taskDescription: userMessage }
+    }
+    
+    return result
+  }
+
+  /**
+   * Handle conversational (non-task) messages
+   */
+  private async handleConversational(userMessage: string, intent: IntentResult['intent']): Promise<string> {
+    const taskStore = useTaskStore.getState()
+    const currentTask = taskStore.currentTask
+    
+    // Handle follow-up during active task
+    if (intent === 'followup' && currentTask && currentTask.status === 'in_progress') {
+      // User says "done", "next", etc. - advance to next step
+      const nextStepIndex = currentTask.currentStepIndex + 1
+      if (nextStepIndex < currentTask.steps.length) {
+        taskStore.updateStep(currentTask.currentStepIndex, true)
+        taskStore.advanceStep()
+        const screenshot = await this.captureScreen()
+        return await this.generateStepGuidance(
+          { ...currentTask, currentStepIndex: nextStepIndex },
+          nextStepIndex,
+          screenshot
+        )
+      } else {
+        taskStore.completeTask()
+        this.stopStepMonitoring()
+        return `🎉 **All done!** You've completed "${currentTask.goal}". Let me know if you need help with anything else!`
+      }
+    }
+    
+    // Generate conversational response
+    const prompt = `${PROMPTS.conversational}\n\nUser message: "${userMessage}"`
+    const response = await generateText(prompt)
+    
+    if (response.error) {
+      // Fallback responses
+      if (intent === 'greeting') {
+        return "Hey! 👋 What would you like help with today?"
+      }
+      return "I'm here to help you navigate software! Just tell me what you're trying to do."
+    }
+    
+    return response.text
+  }
+
+  /**
    * Process a user message and generate guidance
    */
   async processUserMessage(userMessage: string): Promise<string> {
@@ -41,7 +111,16 @@ class Orchestrator {
     taskStore.setAnalyzing(true)
 
     try {
-      // 1. Try to capture current screen
+      // 1. Classify the user's intent first
+      const intentResult = await this.classifyIntent(userMessage)
+      console.log('Intent classified:', intentResult)
+      
+      // 2. Handle non-task intents conversationally
+      if (intentResult.intent !== 'task' && intentResult.confidence > 0.6) {
+        return await this.handleConversational(userMessage, intentResult.intent)
+      }
+      
+      // 3. For tasks, capture and analyze screen
       const screenshot = await this.captureScreen()
       
       // If no screenshot, use text-only mode
@@ -52,24 +131,25 @@ class Orchestrator {
 
       this.lastScreenshot = screenshot
 
-      // 2. Analyze current screen
+      // 4. Analyze current screen
       const analysis = await analyzeScreen(screenshot)
       
       if (!analysis) {
         return await this.processTextOnly(userMessage)
       }
 
-      // 3. Decompose the task into steps
-      const steps = await decomposeTask(userMessage, analysis, screenshot)
+      // 5. Decompose the task into steps (use extracted task description if available)
+      const taskDescription = intentResult.taskDescription || userMessage
+      const steps = await decomposeTask(taskDescription, analysis, screenshot)
       
       if (!steps || steps.length === 0) {
         return await this.processTextOnly(userMessage)
       }
 
-      // 4. Create and store the task
+      // 6. Create and store the task
       const task: Task = {
         id: crypto.randomUUID(),
-        goal: userMessage,
+        goal: taskDescription,
         steps,
         currentStepIndex: 0,
         status: 'in_progress',
@@ -83,10 +163,10 @@ class Orchestrator {
 
       taskStore.setTask(task)
 
-      // 5. Generate friendly guidance for first step
+      // 7. Generate friendly guidance for first step
       const guidance = await this.generateStepGuidance(task, 0, screenshot)
       
-      // 6. Start monitoring for step completion
+      // 8. Start monitoring for step completion
       this.startStepMonitoring()
 
       return guidance
