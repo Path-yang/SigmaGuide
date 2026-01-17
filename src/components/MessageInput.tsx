@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useChatStore } from '../stores/chatStore'
-import { useTaskStore } from '../stores/taskStore'
-import { orchestrator } from '../agents/orchestrator'
+import { reactiveOrchestrator } from '../agents/reactiveOrchestrator'
 
 export function MessageInput() {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { addMessage, isLoading } = useChatStore()
-  const { currentTask } = useTaskStore()
+  const currentGoal = reactiveOrchestrator.getCurrentGoal()
 
   // Auto-resize textarea
   useEffect(() => {
@@ -30,8 +29,8 @@ export function MessageInput() {
       content: userMessage,
     })
 
-    // Process with orchestrator
-    const response = await orchestrator.processUserMessage(userMessage)
+    // Process with reactive orchestrator
+    const response = await reactiveOrchestrator.processUserMessage(userMessage)
 
     // Add assistant response
     addMessage({
@@ -48,24 +47,14 @@ export function MessageInput() {
     }
   }
 
-  const handleSkipStep = () => {
-    orchestrator.skipStep()
-  }
-
   return (
     <div className="p-4 bg-gradient-to-t from-sigma-900 to-transparent">
-      {/* Skip step button (when task in progress) */}
-      {currentTask && currentTask.status === 'in_progress' && (
+      {/* Goal indicator */}
+      {currentGoal && (
         <div className="mb-3 flex justify-center">
-          <button
-            onClick={handleSkipStep}
-            className="text-xs text-sigma-500 hover:text-sigma-accent transition-colors flex items-center gap-1.5 font-mono"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-            </svg>
-            Skip this step
-          </button>
+          <span className="text-xs text-sigma-accent font-mono">
+            🎯 Goal: {currentGoal.length > 40 ? currentGoal.substring(0, 40) + '...' : currentGoal}
+          </span>
         </div>
       )}
 
@@ -76,7 +65,7 @@ export function MessageInput() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={currentTask ? "Ask a follow-up question..." : "What do you need help with?"}
+          placeholder={currentGoal ? "Say 'done' or ask a follow-up..." : "What do you need help with?"}
           disabled={isLoading}
           rows={1}
           className="w-full bg-transparent text-gray-100 placeholder-sigma-500 text-sm px-4 py-3 pr-12 resize-none focus:outline-none font-sans leading-relaxed"
@@ -108,7 +97,11 @@ export function MessageInput() {
 
       {/* Hint text */}
       <p className="text-[10px] text-sigma-500 text-center mt-2 font-mono">
-        Press <kbd className="px-1 py-0.5 bg-sigma-800/50 rounded text-[9px]">Enter</kbd> to send · <kbd className="px-1 py-0.5 bg-sigma-800/50 rounded text-[9px]">Shift+Enter</kbd> for new line
+        {currentGoal ? (
+          <>Press <kbd className="px-1 py-0.5 bg-sigma-accent/30 text-sigma-accent rounded text-[9px]">Ctrl+Shift+Space</kbd> after each action for next step</>
+        ) : (
+          <>Press <kbd className="px-1 py-0.5 bg-sigma-800/50 rounded text-[9px]">Enter</kbd> to send</>
+        )}
       </p>
     </div>
   )

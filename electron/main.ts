@@ -67,11 +67,18 @@ function toggleWindow() {
 // Screen capture handler - captures screen excluding the sidebar
 ipcMain.handle('capture-screen', async () => {
   try {
-    // Use smaller thumbnail for faster processing (1024x768 is enough for analysis)
-    // This significantly reduces token count and API latency
+    // Get actual screen dimensions for proper cropping
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.size
+    const scaleFactor = primaryDisplay.scaleFactor || 1
+    
+    // Capture at 1440x900 - good balance for Claude vision (clear enough to read UI)
+    const captureWidth = 1440
+    const captureHeight = 900
+    
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 1024, height: 768 }
+      thumbnailSize: { width: captureWidth, height: captureHeight }
     })
 
     console.log('Found screen sources:', sources.length)
@@ -80,13 +87,12 @@ ipcMain.handle('capture-screen', async () => {
       const fullScreenshot = sources[0].thumbnail
       const size = fullScreenshot.getSize()
       
-      // Calculate crop area: exclude the sidebar on the right (proportional to thumbnail)
-      // Sidebar is ~420px on a 1920 screen, so roughly 22% of width
-      const sidebarRatio = SIDEBAR_WIDTH / 1920
+      // Calculate crop: exclude sidebar proportionally
+      // Sidebar is 420px on actual screen, calculate ratio
+      const sidebarRatio = SIDEBAR_WIDTH / screenWidth
       const cropWidth = Math.floor(size.width * (1 - sidebarRatio))
       
       if (cropWidth > 0) {
-        // Crop the screenshot to exclude sidebar
         const croppedScreenshot = fullScreenshot.crop({
           x: 0,
           y: 0,
@@ -95,11 +101,10 @@ ipcMain.handle('capture-screen', async () => {
         })
         
         const base64 = croppedScreenshot.toDataURL()
-        console.log('Screenshot captured, size:', base64.length)
+        console.log(`Screenshot: ${cropWidth}x${size.height}, base64 length: ${base64.length}`)
         return base64
       }
       
-      // Fallback to full screenshot if crop fails
       const base64 = fullScreenshot.toDataURL()
       console.log('Screenshot captured (full), size:', base64.length)
       return base64
@@ -124,12 +129,30 @@ ipcMain.handle('toggle-window', () => {
   toggleWindow()
 })
 
+// Trigger guidance check (send to renderer)
+function triggerGuidanceCheck() {
+  if (mainWindow && mainWindow.webContents) {
+    console.log('Hotkey triggered: checking screen for guidance')
+    mainWindow.webContents.send('trigger-guidance-check')
+    // Also show the window if hidden
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+  }
+}
+
 app.whenReady().then(() => {
   createWindow()
 
-  // Register global shortcut: Cmd/Ctrl+Shift+G
-  const shortcut = process.platform === 'darwin' ? 'Command+Shift+G' : 'Control+Shift+G'
-  globalShortcut.register(shortcut, toggleWindow)
+  // Register global shortcut: Cmd/Ctrl+Shift+G to toggle window
+  const toggleShortcut = process.platform === 'darwin' ? 'Command+Shift+G' : 'Control+Shift+G'
+  globalShortcut.register(toggleShortcut, toggleWindow)
+  
+  // Register global shortcut: Cmd/Ctrl+Shift+Space to trigger guidance check
+  const checkShortcut = process.platform === 'darwin' ? 'Command+Shift+Space' : 'Control+Shift+Space'
+  globalShortcut.register(checkShortcut, triggerGuidanceCheck)
+  
+  console.log(`Registered shortcuts: ${toggleShortcut} (toggle), ${checkShortcut} (check)`)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

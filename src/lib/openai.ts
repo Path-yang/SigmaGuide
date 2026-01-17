@@ -34,7 +34,7 @@ export async function analyzeScreenshot(
               type: 'image_url',
               image_url: {
                 url: base64Image,
-                detail: 'low' // 85 tokens vs 1105 tokens = faster but still accurate
+                detail: 'high' // High detail for better UI element recognition
               }
             },
             {

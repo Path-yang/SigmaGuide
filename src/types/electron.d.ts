@@ -3,6 +3,7 @@ export interface ElectronAPI {
   minimizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
   toggleWindow: () => Promise<void>
+  onTriggerGuidanceCheck: (callback: () => void) => () => void
 }
 
 declare global {

@@ -13,9 +13,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "openai": "^4.73.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "tesseract.js": "^7.0.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
@@ -55,4 +57,3 @@
     }
   }
 }
-
