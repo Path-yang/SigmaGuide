@@ -107,6 +107,11 @@ class Orchestrator {
       } else {
         taskStore.completeTask()
         this.stopStepMonitoring()
+        // Capture final screenshot and set it so it gets attached to the response
+        const finalScreenshot = await this.captureScreen()
+        if (finalScreenshot) {
+          useChatStore.getState().setScreenshot(finalScreenshot)
+        }
         return `🎉 **All done!** You've completed "${currentTask.goal}". Let me know if you need help with anything else!`
       }
     }
@@ -436,7 +441,8 @@ Give clear, adaptive guidance based on the actual current screen state.`
           if (lastCompletionMessage !== completionKey) {
             chatStore.addMessage({
               role: 'assistant',
-              content: `🎉 **Excellent!** You've completed all the steps. "${task.goal}" is done!`
+              content: `🎉 **Excellent!** You've completed all the steps. "${task.goal}" is done!`,
+              screenshot: stableScreenshot
             })
             this.lastMessageForStep.set(-1, completionKey)
           }
