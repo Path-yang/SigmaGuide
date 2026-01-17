@@ -67,18 +67,11 @@ function toggleWindow() {
 // Screen capture handler - captures screen excluding the sidebar
 ipcMain.handle('capture-screen', async () => {
   try {
-    // Get actual screen dimensions
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.size
-    const scaleFactor = primaryDisplay.scaleFactor || 1
-    
-    // Capture at actual screen resolution
+    // Use smaller thumbnail for faster processing (1024x768 is enough for analysis)
+    // This significantly reduces token count and API latency
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { 
-        width: Math.floor(screenWidth * scaleFactor), 
-        height: Math.floor(screenHeight * scaleFactor) 
-      }
+      thumbnailSize: { width: 1024, height: 768 }
     })
 
     console.log('Found screen sources:', sources.length)
@@ -87,10 +80,10 @@ ipcMain.handle('capture-screen', async () => {
       const fullScreenshot = sources[0].thumbnail
       const size = fullScreenshot.getSize()
       
-      // Calculate crop area: exclude the sidebar on the right
-      // Account for scale factor in the crop dimensions
-      const sidebarPixels = Math.floor(SIDEBAR_WIDTH * scaleFactor)
-      const cropWidth = size.width - sidebarPixels
+      // Calculate crop area: exclude the sidebar on the right (proportional to thumbnail)
+      // Sidebar is ~420px on a 1920 screen, so roughly 22% of width
+      const sidebarRatio = SIDEBAR_WIDTH / 1920
+      const cropWidth = Math.floor(size.width * (1 - sidebarRatio))
       
       if (cropWidth > 0) {
         // Crop the screenshot to exclude sidebar
@@ -102,7 +95,7 @@ ipcMain.handle('capture-screen', async () => {
         })
         
         const base64 = croppedScreenshot.toDataURL()
-        console.log('Screenshot captured (excluding sidebar), size:', base64.length)
+        console.log('Screenshot captured, size:', base64.length)
         return base64
       }
       

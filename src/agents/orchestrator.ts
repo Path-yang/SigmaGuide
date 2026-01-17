@@ -13,31 +13,76 @@ interface IntentResult {
 
 class Orchestrator {
   private lastScreenshot: string | null = null
-  private lastScreenshotHash: string | null = null
+  private lastScreenshotSamples: number[] | null = null
   private monitoringInterval: ReturnType<typeof setInterval> | null = null
   private lastCheckTime = 0
   private lastMessageForStep: Map<number, string> = new Map()
-  private readonly CHECK_INTERVAL = 1500 // Check every 1.5 seconds
-  private readonly DEBOUNCE_DELAY = 400 // Wait 400ms after screen changes before processing
+  private readonly CHECK_INTERVAL = 1000 // Check every 1 second
+  private readonly DEBOUNCE_DELAY = 300 // Wait 300ms after screen changes before processing
+  private readonly CHANGE_THRESHOLD = 3 // Require 3%+ change to trigger (ignores cursor movement)
   private isProcessing = false // Prevent concurrent processing
 
   /**
-   * Generate a simple hash from screenshot string for change detection
+   * Sample multiple points from the base64 image for robust change detection
+   * Returns an array of character codes at evenly spaced positions
    */
-  private hashScreenshot(screenshot: string): string {
-    // Simple hash: use first 100 chars and last 100 chars for quick comparison
-    // More efficient than full string comparison
-    const start = screenshot.substring(0, 100)
-    const end = screenshot.substring(Math.max(0, screenshot.length - 100))
-    const combined = start + end
-    // Use a simple hash code
-    let hash = 0
-    for (let i = 0; i < combined.length; i++) {
-      const char = combined.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
-      hash = hash & hash // Convert to 32-bit integer
+  private sampleScreenshot(screenshot: string): number[] {
+    const samples: number[] = []
+    const sampleCount = 100 // Sample 100 points across the image
+    const step = Math.floor(screenshot.length / sampleCount)
+    
+    for (let i = 0; i < sampleCount; i++) {
+      const idx = i * step
+      if (idx < screenshot.length) {
+        samples.push(screenshot.charCodeAt(idx))
+      }
     }
-    return hash.toString()
+    return samples
+  }
+
+  /**
+   * Calculate the percentage of change between two sample sets
+   * Returns 0-100 representing percentage of samples that changed
+   */
+  private calculateChangePercent(oldSamples: number[], newSamples: number[]): number {
+    if (oldSamples.length !== newSamples.length) return 100
+    
+    let changedCount = 0
+    for (let i = 0; i < oldSamples.length; i++) {
+      // Consider it "changed" if the difference is significant (>10 char code diff)
+      if (Math.abs(oldSamples[i] - newSamples[i]) > 10) {
+        changedCount++
+      }
+    }
+    
+    return (changedCount / oldSamples.length) * 100
+  }
+
+  /**
+   * Check if the screen has meaningfully changed (ignores cursor, hover effects)
+   * Returns true only if >3% of sampled pixels changed
+   */
+  private hasMeaningfulChange(newScreenshot: string): boolean {
+    const newSamples = this.sampleScreenshot(newScreenshot)
+    
+    if (!this.lastScreenshotSamples) {
+      this.lastScreenshotSamples = newSamples
+      return true // First screenshot, consider it a change
+    }
+    
+    const changePercent = this.calculateChangePercent(this.lastScreenshotSamples, newSamples)
+    
+    // Cursor movement = ~0.1-0.5% change
+    // Hover effects = ~0.5-1% change  
+    // Real UI changes (menu, dialog, page) = 3%+ change
+    console.log(`Screen change: ${changePercent.toFixed(1)}%`)
+    
+    if (changePercent >= this.CHANGE_THRESHOLD) {
+      this.lastScreenshotSamples = newSamples
+      return true
+    }
+    
+    return false
   }
 
   /**
@@ -359,15 +404,14 @@ Give clear, adaptive guidance based on the actual current screen state.`
       // Store initial screenshot
       if (newScreenshot && !this.lastScreenshot) {
         this.lastScreenshot = newScreenshot
-        this.lastScreenshotHash = this.hashScreenshot(newScreenshot)
+        this.lastScreenshotSamples = this.sampleScreenshot(newScreenshot)
       }
       return
     }
 
-    // Check if screenshot has actually changed using hash
-    const newScreenshotHash = this.hashScreenshot(newScreenshot)
-    if (newScreenshotHash === this.lastScreenshotHash) {
-      // No change detected, skip processing
+    // Check if screenshot has meaningfully changed (ignores cursor movement)
+    if (!this.hasMeaningfulChange(newScreenshot)) {
+      // No meaningful change detected, skip processing
       return
     }
 
@@ -378,12 +422,14 @@ Give clear, adaptive guidance based on the actual current screen state.`
     const stableScreenshot = await this.captureScreen()
     if (!stableScreenshot) return
 
-    // Check again if still changed
-    const stableHash = this.hashScreenshot(stableScreenshot)
-    if (stableHash === this.lastScreenshotHash) {
-      // False alarm, screen settled back
+    // Check again if still meaningfully changed
+    if (!this.hasMeaningfulChange(stableScreenshot)) {
+      // False alarm, screen settled back or just cursor movement
       return
     }
+    
+    // Generate a simple ID for deduplication
+    const stableHash = Date.now().toString()
 
     this.isProcessing = true
 
@@ -420,13 +466,12 @@ Give clear, adaptive guidance based on the actual current screen state.`
 
         // Update screenshot for next check
         this.lastScreenshot = stableScreenshot
-        this.lastScreenshotHash = stableHash
         this.isProcessing = false
         return
       }
 
-      // Step completed successfully
-      if (verification.completed && verification.confidence > 0.7) {
+      // Step completed successfully - require high confidence (0.85+)
+      if (verification.completed && verification.confidence > 0.85) {
         // Mark step as complete
         taskStore.updateStep(task.currentStepIndex, true)
         
@@ -476,7 +521,6 @@ Give clear, adaptive guidance based on the actual current screen state.`
         }
 
         this.lastScreenshot = stableScreenshot
-        this.lastScreenshotHash = stableHash
       } else {
         // Screen changed but step not completed - provide adaptive guidance
         const stepKey = `${task.currentStepIndex}-${stableHash}-incomplete`
@@ -500,7 +544,6 @@ Give clear, adaptive guidance based on the actual current screen state.`
         }
 
         this.lastScreenshot = stableScreenshot
-        this.lastScreenshotHash = stableHash
       }
     } catch (error) {
       console.error('Error in checkStepCompletion:', error)
@@ -543,7 +586,7 @@ Give clear, adaptive guidance based on the actual current screen state.`
   reset() {
     this.stopStepMonitoring()
     this.lastScreenshot = null
-    this.lastScreenshotHash = null
+    this.lastScreenshotSamples = null
     this.lastMessageForStep.clear()
     this.isProcessing = false
     useTaskStore.getState().resetTask()

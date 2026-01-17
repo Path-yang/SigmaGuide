@@ -76,12 +76,12 @@ The user was instructed to: "{instruction}"
 
 Your task:
 1. Carefully compare the BEFORE and AFTER screenshots
-2. Determine if the instructed action was completed
-3. Look for changes that indicate the action was performed:
+2. Determine if the instructed action was ACTUALLY completed
+3. Look for CLEAR evidence that the action was performed:
    - UI elements that appeared or disappeared
    - Text or content that changed
-   - Visual indicators of state changes
-   - Menu/toolbar states that changed
+   - Dialogs, menus, or panels that opened/closed
+   - Visible state changes matching the instruction
 
 Return ONLY a JSON object (no markdown, no explanations):
 {
@@ -91,11 +91,14 @@ Return ONLY a JSON object (no markdown, no explanations):
   "nextRecommendation": "If not completed, what might help the user complete the step"
 }
 
-Important:
-- Be generous: if the goal seems achieved (even if done differently), mark as completed
-- Consider alternative ways to complete the same action
-- Confidence should reflect how certain you are about completion (0.7+ for high confidence)
-- If the screenshots are very similar, check if the action might be subtle (like a selection change)`,
+STRICT RULES:
+- Only mark "completed": true if you see CLEAR evidence the exact action was done
+- If screenshots look mostly the same with no obvious change, mark "completed": false
+- Do NOT assume completion - require visible proof
+- confidence 0.9+ = very obvious change matching instruction
+- confidence 0.7-0.9 = likely completed but some uncertainty  
+- confidence < 0.7 = unclear or not completed
+- When in doubt, mark as NOT completed`,
 
   conversational: `You are SigmaGuide, a friendly AI assistant that helps users navigate software.
 

@@ -25,7 +25,7 @@ export async function analyzeScreenshot(
 ): Promise<AIResponse> {
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o', // Use gpt-4o for accurate image analysis
       messages: [
         {
           role: 'user',
@@ -34,7 +34,7 @@ export async function analyzeScreenshot(
               type: 'image_url',
               image_url: {
                 url: base64Image,
-                detail: 'high'
+                detail: 'low' // 85 tokens vs 1105 tokens = faster but still accurate
               }
             },
             {
@@ -44,8 +44,8 @@ export async function analyzeScreenshot(
           ]
         }
       ],
-      max_tokens: 4096,
-      temperature: 0.2 // Lower temperature for more consistent outputs
+      max_tokens: 500, // Limit output for faster response
+      temperature: 0.1 // Lower temperature for more accurate outputs
     })
 
     const text = response.choices[0]?.message?.content || ''
@@ -73,7 +73,7 @@ export async function analyzeScreenshotWithMultipleImages(
       type: 'image_url' as const,
       image_url: {
         url: img,
-        detail: 'high' as const
+        detail: 'low' as const // 85 tokens vs 1105 tokens per image
       }
     }))
 
@@ -87,7 +87,7 @@ export async function analyzeScreenshotWithMultipleImages(
     }
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o', // Use gpt-4o for accurate image comparison
       messages: [
         {
           role: 'user',
@@ -100,7 +100,7 @@ export async function analyzeScreenshotWithMultipleImages(
           ]
         }
       ],
-      max_tokens: 4096,
+      max_tokens: 500, // Limit output for faster response
       temperature: 0.1 // Lower temperature for more deterministic JSON output
     })
 
@@ -121,14 +121,14 @@ export async function analyzeScreenshotWithMultipleImages(
 export async function generateText(prompt: string): Promise<AIResponse> {
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini', // Faster than gpt-4o
       messages: [
         {
           role: 'user',
           content: prompt
         }
       ],
-      max_tokens: 4096,
+      max_tokens: 500, // Limit output for faster response
       temperature: 0.3 // Slightly higher for natural language
     })
 
