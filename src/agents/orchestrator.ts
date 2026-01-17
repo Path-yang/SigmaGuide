@@ -17,8 +17,8 @@ class Orchestrator {
   private monitoringInterval: ReturnType<typeof setInterval> | null = null
   private lastCheckTime = 0
   private lastMessageForStep: Map<number, string> = new Map()
-  private readonly CHECK_INTERVAL = 1000 // Check every 1 second
-  private readonly DEBOUNCE_DELAY = 200 // Wait 200ms after screen changes before processing
+  private readonly CHECK_INTERVAL = 1500 // Check every 1.5 seconds
+  private readonly DEBOUNCE_DELAY = 400 // Wait 400ms after screen changes before processing
   private isProcessing = false // Prevent concurrent processing
 
   /**
@@ -396,7 +396,29 @@ Give clear, adaptive guidance based on the actual current screen state.`
       )
 
       if (!verification) {
-        // Verification failed - just update screenshot and wait for correct action
+        // Verification failed, but screen changed - adapt guidance
+        const stepKey = `${task.currentStepIndex}-${stableHash}`
+        const lastMessage = this.lastMessageForStep.get(task.currentStepIndex)
+        
+        // Only send new message if we haven't sent one for this change
+        if (!lastMessage || lastMessage !== stepKey) {
+          const adaptiveGuidance = await this.generateAdaptiveGuidance(
+            task,
+            stableScreenshot,
+            currentStep.instruction,
+            'The screen changed, but I could not verify if the step was completed correctly.'
+          )
+          
+          chatStore.addMessage({
+            role: 'assistant',
+            content: adaptiveGuidance,
+            screenshot: stableScreenshot
+          })
+          
+          this.lastMessageForStep.set(task.currentStepIndex, stepKey)
+        }
+
+        // Update screenshot for next check
         this.lastScreenshot = stableScreenshot
         this.lastScreenshotHash = stableHash
         this.isProcessing = false
@@ -456,7 +478,27 @@ Give clear, adaptive guidance based on the actual current screen state.`
         this.lastScreenshot = stableScreenshot
         this.lastScreenshotHash = stableHash
       } else {
-        // Screen changed but step not completed correctly - just update screenshot and wait
+        // Screen changed but step not completed - provide adaptive guidance
+        const stepKey = `${task.currentStepIndex}-${stableHash}-incomplete`
+        const lastMessage = this.lastMessageForStep.get(task.currentStepIndex)
+        
+        if (!lastMessage || lastMessage !== stepKey) {
+          const adaptiveGuidance = await this.generateAdaptiveGuidance(
+            task,
+            stableScreenshot,
+            currentStep.instruction,
+            verification.observation || 'The screen changed but the step may not be completed correctly.'
+          )
+          
+          chatStore.addMessage({
+            role: 'assistant',
+            content: adaptiveGuidance,
+            screenshot: stableScreenshot
+          })
+          
+          this.lastMessageForStep.set(task.currentStepIndex, stepKey)
+        }
+
         this.lastScreenshot = stableScreenshot
         this.lastScreenshotHash = stableHash
       }
