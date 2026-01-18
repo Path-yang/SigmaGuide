@@ -14,11 +14,11 @@ interface IntentResult {
 class Orchestrator {
   private lastScreenshot: string | null = null
   private lastScreenshotSamples: number[] | null = null
-  private monitoringInterval: ReturnType<typeof setInterval> | null = null
+  private clickMonitoringCleanup: (() => void) | null = null
   private lastCheckTime = 0
   private lastMessageForStep: Map<number, string> = new Map()
-  private readonly CHECK_INTERVAL = 1000 // Check every 1 second
-  private readonly DEBOUNCE_DELAY = 300 // Wait 300ms after screen changes before processing
+  private readonly DEBOUNCE_DELAY = 300 // Wait 300ms after click before processing
+  private readonly CLICK_DEBOUNCE = 500 // Minimum time between click-triggered checks (ms)
   private readonly CHANGE_THRESHOLD = 3 // Require 3%+ change to trigger (ignores cursor movement)
   private isProcessing = false // Prevent concurrent processing
 
@@ -312,26 +312,75 @@ Give the user clear guidance for this step. Be specific about what they should c
   }
 
   /**
-   * Start monitoring screen for step completion
+   * Start monitoring screen for step completion (triggered by mouse clicks)
    */
   startStepMonitoring() {
     // Clear any existing monitoring
     this.stopStepMonitoring()
     this.lastMessageForStep.clear() // Reset message tracking
 
-    // Check at intervals
-    this.monitoringInterval = setInterval(async () => {
-      await this.checkStepCompletion()
-    }, this.CHECK_INTERVAL)
+    // Start click monitoring if available
+    if (typeof window !== 'undefined' && window.electronAPI?.startClickMonitoring) {
+      window.electronAPI.startClickMonitoring().then((started: boolean) => {
+        if (started) {
+          console.log('Click monitoring started for step completion detection')
+          
+          // Set up click event listener
+          const cleanup = window.electronAPI.onMouseClick((event: { type: string; button: string; x: number; y: number; timestamp: number }) => {
+            console.log(`Mouse click detected: ${event.button} button at (${event.x}, ${event.y})`)
+            
+            // Debounce: don't check too frequently
+            const now = Date.now()
+            if (now - this.lastCheckTime < this.CLICK_DEBOUNCE) {
+              return
+            }
+            this.lastCheckTime = now
+            
+            // Trigger step completion check after a short delay
+            setTimeout(() => {
+              this.checkStepCompletion()
+            }, this.DEBOUNCE_DELAY)
+          })
+          
+          this.clickMonitoringCleanup = cleanup
+        } else {
+          console.warn('Failed to start click monitoring, falling back to interval-based monitoring')
+          // Fallback to interval if click monitoring fails
+          const interval = setInterval(async () => {
+            await this.checkStepCompletion()
+          }, 1000)
+          this.clickMonitoringCleanup = () => clearInterval(interval)
+        }
+      }).catch((error: any) => {
+        console.error('Error starting click monitoring:', error)
+        // Fallback to interval
+        const interval = setInterval(async () => {
+          await this.checkStepCompletion()
+        }, 1000)
+        this.clickMonitoringCleanup = () => clearInterval(interval)
+      })
+    } else {
+      // Fallback: use interval if click monitoring not available (web mode)
+      console.log('Click monitoring not available, using interval-based monitoring')
+      const interval = setInterval(async () => {
+        await this.checkStepCompletion()
+      }, 1000)
+      this.clickMonitoringCleanup = () => clearInterval(interval)
+    }
   }
 
   /**
    * Stop monitoring
    */
   stopStepMonitoring() {
-    if (this.monitoringInterval) {
-      clearInterval(this.monitoringInterval)
-      this.monitoringInterval = null
+    if (this.clickMonitoringCleanup) {
+      this.clickMonitoringCleanup()
+      this.clickMonitoringCleanup = null
+    }
+    
+    // Also stop click monitoring process
+    if (typeof window !== 'undefined' && window.electronAPI?.stopClickMonitoring) {
+      window.electronAPI.stopClickMonitoring()
     }
   }
 
@@ -388,12 +437,7 @@ Give clear, adaptive guidance based on the actual current screen state.`
       return
     }
 
-    // Debounce - don't check too frequently
-    const now = Date.now()
-    if (now - this.lastCheckTime < this.CHECK_INTERVAL) {
-      return
-    }
-    this.lastCheckTime = now
+    // Note: Debouncing is now handled in the click event listener
 
     const currentStep = task.steps[task.currentStepIndex]
     if (!currentStep || currentStep.completed) return

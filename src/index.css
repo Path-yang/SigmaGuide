@@ -29,10 +29,12 @@ html, body, #root {
 }
 
 body {
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Mono', 'Monaco', system-ui, sans-serif;
   background: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'kern' 1;
+  text-rendering: optimizeLegibility;
 }
 
 /* Electron drag regions */
@@ -68,7 +70,7 @@ textarea {
 
 /* Keyboard hints */
 kbd {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Monaco', monospace;
   font-weight: 500;
 }
 

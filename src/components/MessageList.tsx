@@ -28,6 +28,7 @@ function ScreenshotPreview({ src }: { src: string }) {
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 text-[10px] text-sigma-500 hover:text-sigma-accent transition-colors font-mono"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -63,6 +64,7 @@ function ScreenshotPreview({ src }: { src: string }) {
               onClick={() => setFullscreen(false)}
               className="absolute top-4 right-4 p-2 bg-sigma-800/80 hover:bg-sigma-700 rounded-full text-white transition-colors shadow-lg"
               title="Close"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -80,13 +82,13 @@ function ScreenshotPreview({ src }: { src: string }) {
 
 function TypingIndicator() {
   return (
-    <div className="flex items-center gap-1.5 px-4 py-3 animate-fade-in">
+    <div className="flex items-center gap-1.5 px-5 py-2 animate-fade-in">
       <div className="flex items-center gap-1">
-        <span className="w-2 h-2 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-        <span className="w-2 h-2 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-        <span className="w-2 h-2 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+        <span className="w-1.5 h-1.5 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="w-1.5 h-1.5 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 bg-sigma-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
       </div>
-      <span className="text-xs text-sigma-500 ml-2 font-mono">Analyzing...</span>
+      <span className="text-[10px] text-sigma-500 ml-1.5 font-mono">Analyzing...</span>
     </div>
   )
 }
@@ -97,8 +99,8 @@ function MessageBubble({ message }: { message: Message }) {
 
   if (isSystem) {
     return (
-      <div className="px-4 py-2 text-center animate-fade-in">
-        <span className="text-[11px] text-sigma-500 bg-sigma-800/50 px-3 py-1 rounded-full font-mono">
+      <div className="px-5 py-1.5 text-center animate-fade-in">
+        <span className="text-[10px] text-sigma-500 bg-sigma-800/40 px-2.5 py-1 rounded-full font-mono">
           {message.content}
         </span>
       </div>
@@ -106,13 +108,13 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className={`px-4 py-2 animate-fade-in ${isUser ? 'flex justify-end' : ''}`}>
-      <div className={`max-w-[90%] ${isUser ? 'order-2' : ''}`}>
+    <div className={`px-5 py-1.5 animate-fade-in ${isUser ? 'flex justify-end' : ''}`}>
+      <div className={`max-w-[85%] ${isUser ? 'order-2' : ''}`}>
         <div
-          className={`rounded-2xl px-4 py-3 ${
+          className={`rounded-xl px-3.5 py-2.5 ${
             isUser
-              ? 'bg-gradient-to-r from-sigma-accent to-blue-600 text-white rounded-br-md'
-              : 'bg-sigma-800/80 text-gray-100 rounded-bl-md border border-sigma-700/30'
+              ? 'bg-gradient-to-r from-sigma-accent to-blue-600 text-white rounded-br-sm'
+              : 'bg-sigma-800/60 text-gray-100 rounded-bl-sm border border-sigma-700/20'
           }`}
         >
           <p className="text-sm leading-relaxed whitespace-pre-wrap font-sans">
@@ -125,9 +127,6 @@ function MessageBubble({ message }: { message: Message }) {
           </p>
         </div>
         {message.screenshot && <ScreenshotPreview src={message.screenshot} />}
-        <p className={`text-[10px] text-sigma-500 mt-1 font-mono ${isUser ? 'text-right' : ''}`}>
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
       </div>
     </div>
   )
@@ -135,44 +134,44 @@ function MessageBubble({ message }: { message: Message }) {
 
 function WelcomeMessage() {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 py-8 text-center animate-fade-in">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sigma-accent to-blue-600 flex items-center justify-center mb-6 shadow-xl shadow-sigma-accent/20 animate-pulse-glow">
-        <svg className="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="flex flex-col items-center justify-center h-full px-5 py-6 text-center animate-fade-in">
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sigma-accent to-blue-600 flex items-center justify-center mb-4 shadow-lg shadow-sigma-accent/20">
+        <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
       </div>
-      <h2 className="font-display font-bold text-xl text-white mb-2">Welcome to SigmaGuide</h2>
-      <p className="text-sigma-500 text-sm mb-6 leading-relaxed">
-        Your AI assistant for step-by-step software guidance
+      <h2 className="font-display font-semibold text-lg text-white mb-1.5">SigmaGuide</h2>
+      <p className="text-sigma-500 text-xs mb-5 leading-relaxed">
+        AI assistant for step-by-step software guidance
       </p>
       
-      <div className="w-full space-y-3">
-        <div className="bg-sigma-800/50 rounded-xl p-4 border border-sigma-700/30 text-left">
-          <p className="text-[11px] text-sigma-accent font-mono uppercase tracking-wider mb-2">Try asking</p>
-          <ul className="space-y-2 text-sm text-gray-300">
+      <div className="w-full space-y-2">
+        <div className="bg-sigma-800/40 rounded-lg p-3 border border-sigma-700/20 text-left">
+          <p className="text-[10px] text-sigma-accent font-mono uppercase tracking-wider mb-2">Try asking</p>
+          <ul className="space-y-1.5 text-xs text-gray-300">
             <li className="flex items-start gap-2">
-              <span className="text-sigma-accent mt-0.5">→</span>
+              <span className="text-sigma-accent mt-0.5 text-[10px]">→</span>
               <span>"How do I freeze the top row in Excel?"</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-sigma-accent mt-0.5">→</span>
+              <span className="text-sigma-accent mt-0.5 text-[10px]">→</span>
               <span>"Help me create a new branch in VS Code"</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-sigma-accent mt-0.5">→</span>
+              <span className="text-sigma-accent mt-0.5 text-[10px]">→</span>
               <span>"How do I split my screen on Mac?"</span>
             </li>
           </ul>
         </div>
       </div>
 
-      <div className="mt-6 flex items-center gap-2 text-[10px] text-sigma-500 font-mono">
-        <kbd className="px-2 py-1 bg-sigma-700/50 rounded border border-sigma-600/50">⌘</kbd>
+      <div className="mt-5 flex items-center gap-1.5 text-[9px] text-sigma-500 font-mono">
+        <kbd className="px-1.5 py-0.5 bg-sigma-800/50 rounded border border-sigma-700/30">⌘</kbd>
         <span>+</span>
-        <kbd className="px-2 py-1 bg-sigma-700/50 rounded border border-sigma-600/50">⇧</kbd>
+        <kbd className="px-1.5 py-0.5 bg-sigma-800/50 rounded border border-sigma-700/30">⇧</kbd>
         <span>+</span>
-        <kbd className="px-2 py-1 bg-sigma-700/50 rounded border border-sigma-600/50">G</kbd>
-        <span className="ml-2">to toggle sidebar</span>
+        <kbd className="px-1.5 py-0.5 bg-sigma-800/50 rounded border border-sigma-700/30">Space</kbd>
+        <span className="ml-1.5">to open</span>
       </div>
     </div>
   )
@@ -192,7 +191,7 @@ export function MessageList() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-4 space-y-1 scrollbar-thin scrollbar-thumb-sigma-700 scrollbar-track-transparent">
+    <div className="flex-1 overflow-y-auto py-2 space-y-0.5" style={{ minHeight: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />
       ))}

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SigmaGuide Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: transparent;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #overlay-canvas {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="overlay-canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('overlay-canvas')
+    const ctx = canvas.getContext('2d')
+
+    // Set canvas size to match window
+    function resizeCanvas() {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+      console.log('📍 [Overlay] Canvas resized to:', canvas.width + 'x' + canvas.height)
+      console.log('📍 [Overlay] Window size:', window.innerWidth + 'x' + window.innerHeight)
+    }
+
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+
+    // Store active highlights
+    const highlights = new Map()
+    let animationFrameId = null
+    let pulsePhase = 0
+
+    // Speech bubble state
+    let speechBubble = null
+    let speechBubbleFadeIn = 0
+
+    // Loading indicator state
+    let loadingIndicator = null
+    let loadingRotation = 0
+
+    // Highlight style
+    const highlightColor = '#3b82f6' // sigma-accent blue
+    const highlightBorderWidth = 3
+    const highlightGlowRadius = 20
+
+    // Speech bubble style
+    const speechBubbleMaxWidth = 300
+    const speechBubblePadding = 16
+    const speechBubbleRadius = 12
+    const speechBubblePointerSize = 10
+    const speechBubbleOffset = 20 // Distance below blue circle
+
+    function drawHighlight(id, x, y, radius) {
+      // x, y are center coordinates of the button/element in screen space
+      // These coordinates represent the center point where the circle should be drawn
+      // Canvas coordinate system: (0,0) = top-left of canvas, which should match screen (0,0)
+      const centerX = x
+      const centerY = y
+
+      console.log(`📍 [Overlay] Drawing highlight: id=${id}, center=(${centerX}, ${centerY}), radius=${radius}`)
+      console.log(`📍 [Overlay] Canvas size: ${canvas.width}x${canvas.height}, window size: ${window.innerWidth}x${window.innerHeight}`)
+
+      const highlight = {
+        id,
+        radius,
+        centerX,
+        centerY
+      }
+      highlights.set(id, highlight)
+      requestAnimation()
+    }
+
+    function removeHighlight(id) {
+      highlights.delete(id)
+      requestAnimation()
+    }
+
+    function clearAllHighlights() {
+      highlights.clear()
+      requestAnimation()
+    }
+
+    function showSpeechBubble(data) {
+      speechBubble = {
+        text: data.text,
+        x: data.x,
+        y: data.y,
+        radius: data.radius || 30
+      }
+      speechBubbleFadeIn = 0
+      requestAnimation()
+    }
+
+    function dismissSpeechBubble() {
+      speechBubble = null
+      speechBubbleFadeIn = 0
+      requestAnimation()
+    }
+
+    function showLoadingIndicator() {
+      // Show loading indicator in center of screen
+      loadingIndicator = {
+        x: canvas.width / 2,
+        y: canvas.height / 2
+      }
+      loadingRotation = 0
+      requestAnimation()
+    }
+
+    function hideLoadingIndicator() {
+      loadingIndicator = null
+      requestAnimation()
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+      const words = text.split(' ')
+      const lines = []
+      let currentLine = words[0]
+
+      for (let i = 1; i < words.length; i++) {
+        const word = words[i]
+        const width = ctx.measureText(currentLine + ' ' + word).width
+        if (width < maxWidth) {
+          currentLine += ' ' + word
+        } else {
+          lines.push(currentLine)
+          currentLine = word
+        }
+      }
+      lines.push(currentLine)
+      return lines
+    }
+
+    function drawSpeechBubble(ctx, bubble) {
+      if (!bubble) return
+
+      const { x, y, radius, text } = bubble
+      const bubbleY = y + radius + speechBubbleOffset
+
+      // Measure text
+      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+
+      const maxTextWidth = speechBubbleMaxWidth - speechBubblePadding * 2
+      const lines = wrapText(ctx, text, maxTextWidth)
+
+      // Calculate bubble dimensions
+      let maxLineWidth = 0
+      lines.forEach(line => {
+        const width = ctx.measureText(line).width
+        if (width > maxLineWidth) maxLineWidth = width
+      })
+
+      const bubbleWidth = maxLineWidth + speechBubblePadding * 2
+      const bubbleHeight = lines.length * 20 + speechBubblePadding * 2
+      const bubbleX = x - bubbleWidth / 2
+
+      // Ensure bubble stays on screen
+      const minX = 10
+      const maxX = canvas.width - bubbleWidth - 10
+      const adjustedX = Math.max(minX, Math.min(maxX, bubbleX))
+
+      // Draw bubble with fade-in animation
+      const alpha = Math.min(1, speechBubbleFadeIn)
+
+      // Helper function to draw rounded rectangle
+      function drawRoundedRect(x, y, width, height, radius) {
+        ctx.beginPath()
+        ctx.moveTo(x + radius, y)
+        ctx.lineTo(x + width - radius, y)
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
+        ctx.lineTo(x + width, y + height - radius)
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+        ctx.lineTo(x + radius, y + height)
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius)
+        ctx.lineTo(x, y + radius)
+        ctx.quadraticCurveTo(x, y, x + radius, y)
+        ctx.closePath()
+      }
+
+      // Background with backdrop blur effect (simulated with semi-transparent fill)
+      ctx.fillStyle = `rgba(17, 24, 39, ${0.9 * alpha})` // sigma-900 with transparency
+      drawRoundedRect(adjustedX, bubbleY, bubbleWidth, bubbleHeight, speechBubbleRadius)
+      ctx.fill()
+
+      // Border
+      ctx.strokeStyle = `rgba(59, 130, 246, ${0.6 * alpha})` // sigma-accent
+      ctx.lineWidth = 1.5
+      drawRoundedRect(adjustedX, bubbleY, bubbleWidth, bubbleHeight, speechBubbleRadius)
+      ctx.stroke()
+
+      // Draw pointer (triangle pointing up to blue circle)
+      const pointerX = x
+      const pointerY = bubbleY
+      ctx.fillStyle = `rgba(17, 24, 39, ${0.9 * alpha})`
+      ctx.beginPath()
+      ctx.moveTo(pointerX, pointerY)
+      ctx.lineTo(pointerX - speechBubblePointerSize, pointerY - speechBubblePointerSize)
+      ctx.lineTo(pointerX + speechBubblePointerSize, pointerY - speechBubblePointerSize)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.strokeStyle = `rgba(59, 130, 246, ${0.6 * alpha})`
+      ctx.beginPath()
+      ctx.moveTo(pointerX, pointerY)
+      ctx.lineTo(pointerX - speechBubblePointerSize, pointerY - speechBubblePointerSize)
+      ctx.lineTo(pointerX + speechBubblePointerSize, pointerY - speechBubblePointerSize)
+      ctx.closePath()
+      ctx.stroke()
+
+      // Draw text
+      ctx.fillStyle = `rgba(243, 244, 246, ${alpha})` // gray-100
+      lines.forEach((line, index) => {
+        ctx.fillText(line, adjustedX + speechBubblePadding, bubbleY + speechBubblePadding + index * 20)
+      })
+    }
+
+    function requestAnimation() {
+      if (animationFrameId) return
+      animationFrameId = requestAnimationFrame(animate)
+    }
+
+    function animate() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Update pulse phase
+      pulsePhase = (pulsePhase + 0.05) % (Math.PI * 2)
+      const pulse = 0.7 + 0.3 * Math.sin(pulsePhase)
+
+      // Update speech bubble fade-in
+      if (speechBubble && speechBubbleFadeIn < 1) {
+        speechBubbleFadeIn = Math.min(1, speechBubbleFadeIn + 0.1)
+      }
+
+      // Update loading rotation
+      if (loadingIndicator) {
+        loadingRotation = (loadingRotation + 0.1) % (Math.PI * 2)
+      }
+
+      // Draw loading indicator (if visible)
+      if (loadingIndicator) {
+        const { x, y } = loadingIndicator
+        const spinnerRadius = 20
+        const spinnerThickness = 3
+        const textOffset = 40 // Distance below spinner
+
+        // Draw spinner circle
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(loadingRotation)
+
+        // Draw spinning arc
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)' // sigma-accent blue
+        ctx.lineWidth = spinnerThickness
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.arc(0, 0, spinnerRadius, 0, Math.PI * 1.5)
+        ctx.stroke()
+
+        // Draw pulsing dot
+        const dotAlpha = 0.5 + 0.5 * Math.sin(loadingRotation * 2)
+        ctx.fillStyle = `rgba(59, 130, 246, ${dotAlpha})`
+        ctx.beginPath()
+        ctx.arc(spinnerRadius, 0, 4, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.restore()
+
+        // Draw "thinking" text below spinner
+        ctx.save()
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+
+        // Draw text with shadow for better visibility
+        const textY = y + textOffset
+        const text = 'thinking'
+
+        // Measure text for background
+        const textMetrics = ctx.measureText(text)
+        const textWidth = textMetrics.width
+        const textHeight = 20
+        const padding = 8
+
+        // Draw semi-transparent background for text
+        ctx.fillStyle = 'rgba(17, 24, 39, 0.7)' // sigma-900 with transparency
+        ctx.fillRect(x - textWidth / 2 - padding, textY - 2, textWidth + padding * 2, textHeight)
+
+        // Draw text
+        ctx.fillStyle = 'rgba(243, 244, 246, 1)' // gray-100, fully opaque
+        ctx.fillText(text, x, textY)
+
+        ctx.restore()
+      }
+
+      // Draw each highlight
+      highlights.forEach((highlight) => {
+        const { centerX, centerY, radius } = highlight
+
+        // centerX, centerY are the center coordinates of the button/element
+        // ctx.arc() draws a circle centered at these coordinates
+        // This ensures the blue circle is centered on the button center
+
+        // Outer glow
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, radius * 0.7,
+          centerX, centerY, radius + highlightGlowRadius
+        )
+        gradient.addColorStop(0, `rgba(59, 130, 246, ${0.4 * pulse})`)
+        gradient.addColorStop(0.5, `rgba(59, 130, 246, ${0.2 * pulse})`)
+        gradient.addColorStop(1, 'rgba(59, 130, 246, 0)')
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(centerX, centerY, radius + highlightGlowRadius, 0, Math.PI * 2)
+        ctx.fill()
+
+        // Main circle - centered at button center coordinates
+        ctx.strokeStyle = highlightColor
+        ctx.lineWidth = highlightBorderWidth * pulse
+        ctx.beginPath()
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
+        ctx.stroke()
+
+        // Inner highlight
+        ctx.fillStyle = `rgba(59, 130, 246, ${0.15 * pulse})`
+        ctx.beginPath()
+        ctx.arc(centerX, centerY, radius * 0.8, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      // Draw speech bubble
+      if (speechBubble) {
+        drawSpeechBubble(ctx, speechBubble)
+      }
+
+      // Continue animation if there are highlights, speech bubble, or loading indicator
+      if (highlights.size > 0 || speechBubble || loadingIndicator) {
+        animationFrameId = requestAnimationFrame(animate)
+      } else {
+        animationFrameId = null
+      }
+    }
+
+    // Listen for IPC messages
+    console.log('Overlay script loaded, electronAPI available:', !!window.electronAPI)
+
+    if (window.electronAPI) {
+      // Handle show highlight
+      const showCleanup = window.electronAPI.onShowHighlight?.((data) => {
+        console.log('📍 [Overlay] Received show-highlight event:', data)
+        console.log('📍 [Overlay] Coordinates received: x=' + data.x + ', y=' + data.y + ', radius=' + (data.radius || 30))
+        drawHighlight(data.id, data.x, data.y, data.radius)
+      })
+
+      // Handle update highlight
+      const updateCleanup = window.electronAPI.onUpdateHighlight?.((data) => {
+        console.log('📍 [Overlay] Received update-highlight event:', data)
+        console.log('📍 [Overlay] Coordinates received: x=' + data.x + ', y=' + data.y + ', radius=' + (data.radius || 30))
+        drawHighlight(data.id, data.x, data.y, data.radius)
+      })
+
+      // Handle clear highlights
+      const clearCleanup = window.electronAPI.onClearHighlights?.(() => {
+        console.log('Received clear-highlights event')
+        clearAllHighlights()
+      })
+
+      // Handle speech bubble
+      const speechBubbleCleanup = window.electronAPI.onSpeechBubble?.((data) => {
+        console.log('💬 [Overlay] Received speech-bubble event:', data)
+        showSpeechBubble(data)
+      })
+
+      // Handle dismiss speech bubble (sent from main process)
+      const dismissSpeechBubbleCleanup = window.electronAPI.onDismissSpeechBubble?.(() => {
+        console.log('💬 [Overlay] Received dismiss-speech-bubble event')
+        dismissSpeechBubble()
+      })
+
+      // Handle loading indicator
+      const showLoadingCleanup = window.electronAPI.onShowLoading?.(() => {
+        console.log('⏳ [Overlay] Received show-loading event')
+        showLoadingIndicator()
+      })
+
+      const hideLoadingCleanup = window.electronAPI.onHideLoading?.(() => {
+        console.log('⏳ [Overlay] Received hide-loading event')
+        hideLoadingIndicator()
+      })
+
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', () => {
+        showCleanup?.()
+        updateCleanup?.()
+        clearCleanup?.()
+        speechBubbleCleanup?.()
+        dismissSpeechBubbleCleanup?.()
+        showLoadingCleanup?.()
+        hideLoadingCleanup?.()
+      })
+
+      console.log('IPC listeners registered')
+    } else {
+      console.error('window.electronAPI not available in overlay window!')
+    }
+
+    // Handle click to dismiss speech bubble when clicking the blue circle
+    // Note: Since canvas has pointer-events: none, we need to use a different approach
+    // We'll use IPC to handle clicks from the main process
+    // But first, we need to make the canvas capture clicks only on visual elements
+
+    // Since the canvas is pointer-events: none, clicks will pass through
+    // We need to use a different method: create invisible hit areas
+    // Actually, a better approach: use setIgnoreMouseEvents callback in main process
+    // For now, we'll keep it simple: clicks pass through by default
+    // Users can dismiss via Escape key or clicking elsewhere (which will trigger a new click event)
+
+    // Handle Escape key to dismiss speech bubble
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && speechBubble) {
+        if (window.electronAPI?.dismissSpeechBubble) {
+          window.electronAPI.dismissSpeechBubble()
+        }
+      }
+    })
+
+    // Start animation loop
+    requestAnimation()
+  </script>
+</body>
+
+</html>

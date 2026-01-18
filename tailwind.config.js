@@ -18,8 +18,19 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['JetBrains Mono', 'SF Mono', 'Fira Code', 'monospace'],
-        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Mono', 'Monaco', 'system-ui', 'sans-serif'],
+        display: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'system-ui', 'sans-serif'],
+      },
+      backdropBlur: {
+        xs: '2px',
+      },
+      boxShadow: {
+        'mac': '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
+        'mac-lg': '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+      },
+      borderRadius: {
+        'mac': '12px',
+        'mac-lg': '16px',
       },
       animation: {
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
