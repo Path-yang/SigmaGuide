@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen, systemPreferences, nativeImage, Tray, Menu } = require('electron')
+const { app, BrowserWindow, globalShortcut, desktopCapturer, ipcMain, screen: electronScreen, systemPreferences, nativeImage, Tray, Menu } = require('electron')
 const path = require('path')
 const { execFile, spawn } = require('child_process')
 const { promisify } = require('util')
@@ -25,7 +25,7 @@ function checkScreenCapturePermission(): boolean {
 }
 
 function createWindow() {
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
 
   // Calculate centered position
@@ -69,13 +69,6 @@ function createWindow() {
   // Hide window initially
   mainWindow.hide()
 
-  // Try to exclude window from screen capture using content protection
-  // This tells macOS not to include this window in screenshots
-  // Note: May not work with ScreenCaptureKit on macOS 15+, but worth trying
-  if (process.platform === 'darwin') {
-    mainWindow.setContentProtection(true)
-  }
-
   // Handle window blur - hide when clicking outside (optional, can be disabled)
   mainWindow.on('blur', () => {
     // Don't hide if we're in the middle of capturing screen (prevents race condition)
@@ -110,7 +103,7 @@ function createWindow() {
 }
 
 function createOverlayWindow() {
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
   const { width: screenWidth, height: screenHeight } = primaryDisplay.size
   const { x: displayX, y: displayY } = primaryDisplay.bounds
 
@@ -135,11 +128,6 @@ function createOverlayWindow() {
     },
   })
 
-  // Exclude overlay from screen capture
-  if (process.platform === 'darwin') {
-    overlayWindow.setContentProtection(true)
-  }
-
   // Ensure overlay stays on top of everything
   overlayWindow.setAlwaysOnTop(true, 'screen-saver')
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -151,17 +139,17 @@ function createOverlayWindow() {
 
   console.log('Loading overlay from:', overlayPath)
 
-  overlayWindow.loadFile(overlayPath).catch((err) => {
+  overlayWindow.loadFile(overlayPath).catch((err: any) => {
     console.error('Failed to load overlay.html from file system:', err, 'Path:', overlayPath)
     // Fallback: try relative to __dirname
     const fallbackPath = path.join(__dirname, '../overlay.html')
     console.log('Trying fallback path:', fallbackPath)
-    overlayWindow.loadFile(fallbackPath).catch((fallbackErr) => {
+    overlayWindow.loadFile(fallbackPath).catch((fallbackErr: any) => {
       console.error('Fallback path also failed:', fallbackErr)
       // Try dev server if available
       if (process.env.VITE_DEV_SERVER_URL) {
         const devServerUrl = process.env.VITE_DEV_SERVER_URL.replace('/index.html', '')
-        overlayWindow.loadURL(`${devServerUrl}/overlay.html`).catch((urlErr) => {
+        overlayWindow.loadURL(`${devServerUrl}/overlay.html`).catch((urlErr: any) => {
           console.error('Failed to load overlay.html from dev server:', urlErr)
           // Last resort: create inline HTML
           overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
@@ -286,7 +274,7 @@ function toggleWindow() {
       mainWindow.hide()
     } else {
       // Center window on current display
-      const primaryDisplay = screen.getPrimaryDisplay()
+      const primaryDisplay = electronScreen.getPrimaryDisplay()
       const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
       const x = Math.floor((screenWidth - WINDOW_WIDTH) / 2)
       const y = Math.floor((screenHeight - WINDOW_MAX_HEIGHT) / 2)
@@ -328,7 +316,7 @@ ipcMain.handle('capture-screen', async () => {
 
   try {
     // Get actual screen dimensions and scaling
-    const primaryDisplay = screen.getPrimaryDisplay()
+    const primaryDisplay = electronScreen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.size
     const scaleFactor = primaryDisplay.scaleFactor || 1
 
@@ -386,10 +374,14 @@ ipcMain.handle('capture-screen', async () => {
           thumbnailSize: { width: captureWidth, height: captureHeight }
         })
 
-        if (sources.length > 0) {
+        if (sources.length > 0 && sources[0]) {
           const fullScreenshot = sources[0].thumbnail
-          result = fullScreenshot.toDataURL()
-          console.log('📸 Screenshot captured via desktopCapturer (fallback), size:', result.length)
+          if (fullScreenshot) {
+            result = fullScreenshot.toDataURL()
+            if (result) {
+              console.log('📸 Screenshot captured via desktopCapturer (fallback), size:', result.length)
+            }
+          }
         }
       }
     } else {
@@ -399,10 +391,14 @@ ipcMain.handle('capture-screen', async () => {
         thumbnailSize: { width: captureWidth, height: captureHeight }
       })
 
-      if (sources.length > 0) {
+      if (sources.length > 0 && sources[0]) {
         const fullScreenshot = sources[0].thumbnail
-        result = fullScreenshot.toDataURL()
-        console.log('Screenshot captured, size:', result.length)
+        if (fullScreenshot) {
+          result = fullScreenshot.toDataURL()
+          if (result) {
+            console.log('Screenshot captured, size:', result.length)
+          }
+        }
       }
     }
 
@@ -522,13 +518,22 @@ function getImageDimensions(dataUrl: string): { width: number; height: number } 
 }
 
 ipcMain.handle('set-screenshot-dimensions', (_event: any, width: number, height: number) => {
-  lastScreenshotDimensions = { width, height }
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.size
+  const scaleFactor = primaryDisplay.scaleFactor || 1
+  lastScreenshotDimensions = {
+    width,
+    height,
+    screenWidth,
+    screenHeight,
+    scaleFactor
+  }
 })
 
 ipcMain.handle('show-overlay-highlight', (_event: any, data: HighlightData) => {
   if (!overlayWindow) return
 
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
   const { width: logicalScreenWidth, height: logicalScreenHeight } = primaryDisplay.size
 
   // Get the last screenshot dimensions for coordinate scaling
@@ -627,7 +632,7 @@ ipcMain.handle('clear-overlay-highlights', () => {
 ipcMain.handle('update-overlay-highlight', (_event: any, data: HighlightData) => {
   if (!overlayWindow) return
 
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
   const { width: logicalScreenWidth, height: logicalScreenHeight } = primaryDisplay.size
 
   // Get the last screenshot dimensions for coordinate scaling
@@ -682,7 +687,7 @@ interface SpeechBubbleData {
 ipcMain.handle('show-speech-bubble', (_event: any, data: SpeechBubbleData) => {
   if (!overlayWindow) return
 
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = electronScreen.getPrimaryDisplay()
   const { width: logicalScreenWidth, height: logicalScreenHeight } = primaryDisplay.size
 
   // Get the last screenshot dimensions for coordinate scaling
@@ -739,7 +744,7 @@ ipcMain.handle('show-speech-bubble', (_event: any, data: SpeechBubbleData) => {
 ipcMain.handle('dismiss-speech-bubble', () => {
   // Show the main window when speech bubble is dismissed
   if (mainWindow && !mainWindow.isVisible()) {
-    const primaryDisplay = screen.getPrimaryDisplay()
+    const primaryDisplay = electronScreen.getPrimaryDisplay()
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
     const x = Math.floor((screenWidth - WINDOW_WIDTH) / 2)
     const y = Math.floor((screenHeight - WINDOW_MAX_HEIGHT) / 2)
@@ -975,6 +980,163 @@ ipcMain.handle('find-element-accessibility', async (_event: any, data: FindEleme
   }
 
   return null
+})
+
+// Call Homerow's search function
+// Activates Homerow and searches for the given text
+ipcMain.handle('call-homerow-search', async (_event: any, searchText: string): Promise<boolean> => {
+  if (process.platform !== 'darwin') {
+    console.log('Homerow search only available on macOS')
+    return false
+  }
+
+  if (!searchText || !searchText.trim()) {
+    console.log('🔍 [Homerow] No search text provided for Homerow')
+    return false
+  }
+
+  // The searchText is the button/element name (e.g., "call", "save", "submit")
+  console.log('🔍 [Homerow] Button name to search for:', searchText)
+
+  try {
+    // Use AppleScript to:
+    // 1. Focus the current window
+    // 2. Activate Homerow with Shift+Control+Option+Command+F
+    // 3. Type the button name into Homerow search
+    // Escape special characters for AppleScript
+    // Also escape single quotes which might cause issues
+    const escapedText = searchText
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/'/g, "\\'")
+      .replace(/\$/g, '\\$')
+      .replace(/`/g, '\\`')
+
+    console.log('🔍 [Homerow] Original button name:', searchText)
+    console.log('🔍 [Homerow] Escaped text for AppleScript:', escapedText)
+    console.log('🔍 [Homerow] Text length:', searchText.length)
+
+    const appleScript = `
+      tell application "System Events"
+        -- Get the frontmost application and window
+        set frontApp to first application process whose frontmost is true
+        set frontWindow to first window of frontApp
+        
+        -- Activate the frontmost application to ensure it's in foreground
+        tell frontApp
+          set frontmost to true
+        end tell
+        delay 0.4 -- Wait for app to become frontmost and fully activate
+        
+        -- Click on the window to ensure it's focused and receives keyboard events
+        if frontWindow exists then
+          try
+            click frontWindow
+            delay 0.4 -- Wait for window to receive focus and be ready for keyboard input
+          on error
+            -- If click fails, try to activate the window differently
+            tell frontApp
+              perform action "AXRaise" of frontWindow
+            end tell
+            delay 0.4
+          end try
+        end if
+        
+        -- Activate Homerow with keyboard shortcut (Shift+Control+Option+Command+F)
+        -- Key code 3 is F key
+        -- Send the key combination - this should trigger Homerow
+        key code 3 using {command down, shift down, control down, option down}
+        delay 1.5 -- Wait longer for Homerow to fully activate and open its search interface
+        
+        -- Find and set the value of the Homerow search field directly
+        -- This is more reliable than using keystroke
+        try
+          -- Try to find Homerow application
+          set homerowApp to first application process whose name contains "Homerow"
+          if homerowApp exists then
+            -- Get the Homerow window
+            set homerowWindow to first window of homerowApp
+            if homerowWindow exists then
+              -- Look for a text field in the Homerow window (the search field)
+              set searchField to first text field of homerowWindow
+              if searchField exists then
+                -- Set the value directly - this is more reliable than keystroke
+                set value of searchField to "${escapedText}"
+                delay 0.1
+              else
+                -- If we can't find a text field, fall back to keystroke
+                click homerowWindow
+                delay 0.3
+                -- Clear the field first
+                keystroke "a" using command down
+                delay 0.1
+                keystroke (ASCII character 127)
+                delay 0.2
+                -- Type the button name
+                keystroke "${escapedText}"
+              end if
+            else
+              -- Fallback: use keystroke if we can't find the window
+              delay 0.5
+              keystroke "a" using command down
+              delay 0.1
+              keystroke (ASCII character 127)
+              delay 0.2
+              keystroke "${escapedText}"
+            end if
+          else
+            -- Fallback: use keystroke if we can't find Homerow app
+            delay 0.5
+            keystroke "a" using command down
+            delay 0.1
+            keystroke (ASCII character 127)
+            delay 0.2
+            keystroke "${escapedText}"
+          end if
+        on error
+          -- Final fallback: use keystroke
+          delay 0.5
+          keystroke "a" using command down
+          delay 0.1
+          keystroke (ASCII character 127)
+          delay 0.2
+          keystroke "${escapedText}"
+        end try
+      end tell
+    `
+
+    console.log('🔍 [Homerow] Calling Homerow search for:', searchText)
+    console.log('🔍 [Homerow] Executing AppleScript to activate Homerow...')
+
+    try {
+      const { stdout, stderr } = await execFileAsync('osascript', ['-e', appleScript], {
+        timeout: 10000 // Increased timeout to 10 seconds
+      })
+
+      if (stderr && stderr.trim()) {
+        console.log('🔍 [Homerow] AppleScript stderr:', stderr)
+      }
+
+      if (stdout && stdout.trim()) {
+        console.log('🔍 [Homerow] AppleScript stdout:', stdout)
+      }
+
+      console.log('🔍 [Homerow] Homerow search activated successfully')
+      return true
+    } catch (execError: any) {
+      console.error('🔍 [Homerow] AppleScript execution error:', execError.message)
+      if (execError.stdout) {
+        console.log('🔍 [Homerow] Error stdout:', execError.stdout)
+      }
+      if (execError.stderr) {
+        console.log('🔍 [Homerow] Error stderr:', execError.stderr)
+      }
+      return false
+    }
+  } catch (error: any) {
+    console.error('🔍 [Homerow] Error calling Homerow search:', error.message)
+    return false
+  }
 })
 
 // IPC handlers for click monitoring

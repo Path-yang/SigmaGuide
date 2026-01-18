@@ -44,6 +44,8 @@ export interface ElectronAPI {
   onDismissSpeechBubble?: (callback: () => void) => () => void
   // Accessibility API method
   findElementAccessibility: (data: { text: string; type?: string; context?: string }) => Promise<{ x: number, y: number, width: number, height: number } | null>
+  // Homerow search method
+  callHomerowSearch: (searchText: string) => Promise<boolean>
 }
 
 declare global {

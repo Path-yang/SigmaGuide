@@ -147,7 +147,7 @@ class ReactiveOrchestrator {
   /**
    * Show overlay highlight with resolved coordinates
    */
-  private async showHighlight(coords: ParsedCoordinates, responseText?: string): Promise<void> {
+  private async showHighlight(coords: ParsedCoordinates, responseText?: string, targetText?: string): Promise<void> {
     if (typeof window !== 'undefined' && window.electronAPI?.showOverlayHighlight) {
       // Hide loading indicator when highlight appears
       if (window.electronAPI?.hideLoadingIndicator) {
@@ -174,6 +174,28 @@ class ReactiveOrchestrator {
           coordinateSource: coords.coordinateSource
         })
         console.log('📍 [Highlight] Highlight sent successfully')
+
+        // Call Homerow search if we have target text
+        if (targetText && window.electronAPI?.callHomerowSearch) {
+          try {
+            // Convert to lowercase for Homerow search
+            const lowercaseTargetText = targetText.toLowerCase()
+            console.log('🔍 [Homerow] Calling Homerow search with target text:', lowercaseTargetText)
+            console.log('🔍 [Homerow] This will search for the button/element:', lowercaseTargetText)
+            const success = await window.electronAPI.callHomerowSearch(lowercaseTargetText)
+            if (success) {
+              console.log('🔍 [Homerow] Successfully activated Homerow and entered search text:', lowercaseTargetText)
+            } else {
+              console.warn('🔍 [Homerow] Failed to activate Homerow search')
+            }
+          } catch (error) {
+            console.error('🔍 [Homerow] Error calling Homerow search:', error)
+          }
+        } else {
+          if (!targetText) {
+            console.log('🔍 [Homerow] No target text available to search for')
+          }
+        }
 
         // Send speech bubble if response text is provided
         if (responseText && window.electronAPI?.showSpeechBubble) {
@@ -352,7 +374,7 @@ class ReactiveOrchestrator {
       )
 
       if (resolvedCoords) {
-        await this.showHighlight(resolvedCoords)
+        await this.showHighlight(resolvedCoords, undefined, parsed.target?.text)
       } else {
         this.clearHighlights()
       }
@@ -469,7 +491,7 @@ class ReactiveOrchestrator {
           width: resolvedCoords.width,
           height: resolvedCoords.height
         })
-        await this.showHighlight(resolvedCoords, parsed.text)
+        await this.showHighlight(resolvedCoords, parsed.text, parsed.target?.text)
       } else {
         console.log('📊 [Coordinate Resolution] Final result: No coordinates resolved - all methods failed')
         this.clearHighlights()
@@ -530,7 +552,7 @@ class ReactiveOrchestrator {
             )
 
             if (resolvedCoords) {
-              await this.showHighlight(resolvedCoords, parsed.text)
+              await this.showHighlight(resolvedCoords, parsed.text, parsed.target?.text)
             }
 
             return parsed.text
@@ -660,7 +682,7 @@ class ReactiveOrchestrator {
       // Show highlight and speech bubble if we have coordinates
       if (resolvedCoords) {
         console.log('📊 [Click Handler] Showing highlight with coordinates:', resolvedCoords)
-        await this.showHighlight(resolvedCoords, parsed.text)
+        await this.showHighlight(resolvedCoords, parsed.text, parsed.target?.text)
       } else {
         console.log('📊 [Click Handler] No coordinates resolved - clearing highlights')
         // Hide loading if no coordinates
@@ -836,7 +858,7 @@ class ReactiveOrchestrator {
           )
 
           if (resolvedCoords) {
-            await this.showHighlight(resolvedCoords)
+            await this.showHighlight(resolvedCoords, undefined, parsed.target?.text)
           } else {
             this.clearHighlights()
           }

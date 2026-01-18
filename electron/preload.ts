@@ -84,4 +84,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Accessibility API method
   findElementAccessibility: (data: { text: string; type?: string; context?: string }) =>
     ipcRenderer.invoke('find-element-accessibility', data),
+  // Homerow search method
+  callHomerowSearch: (searchText: string) =>
+    ipcRenderer.invoke('call-homerow-search', searchText),
 })
